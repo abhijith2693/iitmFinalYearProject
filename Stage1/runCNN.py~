@@ -1,0 +1,171 @@
+import os
+import sys
+import time
+sys.path.insert(1,'../headers/')
+
+#import readPatient
+import numpy
+import cPickle as pickle
+from PIL import Image
+
+import theano
+import theano.tensor as T
+
+from convnet3d import *
+from mlp import HiddenLayer
+from logistic_sgd import *
+
+import mha
+############################################
+
+############################################
+#Hyper Parameters and Input Data details
+plen = 101
+
+num_channels = 4
+
+valid_pat_num = 11
+test_pat_num = 12
+num_patients = 10
+
+img_shape = (plen,plen,plen)
+
+# training parameters
+learning_rate = 0.1 				
+n_epochs = 200
+patience = 10000
+patience_increase = 2
+imrovement_threshold = 0.995
+validation_frequency = 34*48
+
+#network parameters
+n_fmaps = (20,40,500,3)		#feature map description :
+#n_fmaps[0] - number of feature maps after 1st convolution
+#n_fmaps[1] - number of feature maps after 2nd convolution
+#n_fmaps[2] - number of output neurons after hidden layer
+#n_fmaps[3] - number of output classes							
+
+fmap_sizes = (5,5,5,1)		
+# 0th value is fmap_size after 1st convolution and so on
+###########################################
+#Initial Settings
+
+best_validation_loss = numpy.inf
+best_iter = 0
+test_score  = 0.
+
+epoch = 0
+done_looping = False
+rng = numpy.random.RandomState(23455)
+
+######################################
+#ignore_border = True
+x = T.ftensor4('x')
+y = T.ivector('y')
+
+layer0_input = x.reshape([1,num_channels,img_shape[0],img_shape[1],img_shape[2]])
+layer0conv = ConvLayer(rng,
+					   input = layer0_input,
+					   filter_shape = (n_fmaps[0],num_channels,fmap_sizes[0],fmap_sizes[0],fmap_sizes[0]),
+					   image_shape = (1,num_channels,img_shape[0],img_shape[1],img_shape[2]),
+					   sparse_count = 0 )
+newlen = layer0conv.outputlen
+layer0pool = PoolLayer(layer0conv.output,
+					   image_shape = (1,n_fmaps[0],newlen[0],newlen[1],newlen[2]),
+					   pool_size = (2,2,2),
+					   sparse_count = 0)
+newlen = layer0pool.outputlen
+
+layer1conv = ConvLayer(rng,
+				       layer0pool.output,
+				       filter_shape = (n_fmaps[1],n_fmaps[0],fmap_sizes[1],fmap_sizes[1],fmap_sizes[1]),
+				       image_shape = (1,n_fmaps[0],newlen[0],newlen[1],newlen[2]), 
+				       sparse_count = 1 )
+newlen = layer1conv.outputlen
+
+layer1pool = PoolLayer(layer1conv.output,
+					   image_shape = (1,n_fmaps[1],newlen[0],newlen[1],newlen[2]),
+					   pool_size = (2,2,2),
+					   sparse_count = 1 )
+newlen = layer1pool.outputlen
+
+layer2conv = ConvLayer(rng,
+				   input = layer1pool.output,
+				   filter_shape = (n_fmaps[2],n_fmaps[1],fmap_sizes[2],fmap_sizes[2],fmap_sizes[2]),
+				   image_shape = (1,n_fmaps[1],newlen[0],newlen[1],newlen[2]),
+				   sparse_count = 3)
+newlen = layer2conv.outputlen
+layer3conv = ConvLayer(rng,
+				   input = layer2conv.output,
+				   filter_shape = (n_fmaps[3],n_fmaps[2],fmap_sizes[3],fmap_sizes[3],fmap_sizes[3]),
+				   image_shape = (1,n_fmaps[2],newlen[0],newlen[1],newlen[2]),
+				   sparse_count = 0,softmax = 1)
+
+cost = layer3conv.negative_log_likelihood(y)
+
+test_model = theano.function([x,y],layer3conv.errors(y))
+valid_model = theano.function([x,y],layer3conv.errors(y))
+
+params = layer3conv.params + layer2conv.params + layer1conv.params + layer0conv.params
+masks = layer3conv.masks + layer2conv.masks + layer1conv.masks + layer0conv.masks
+grads = T.grad(cost,params)
+#update only sparse elements
+updates = [(param_i,param_i-learning_rate*grad_i*mask_i) for param_i,grad_i,mask_i in zip(params,grads,masks)]
+train_model = theano.function([x,y],cost,updates = updates)
+## put code to update sparse matrix
+############################################
+"""
+start_time  = time.clock()
+
+while(epoch < n_epochs) and (not done_looping):
+	epoch = epoch + 1
+	for pat_idx in xrange(num_patients):
+		pat = readPatient.new(pat_idx+1)
+
+		print (' epoch : %i, patient : %i \n'%(epoch,pat_idx+1))
+		cost_ij = train_model(pat.data,pat.truth)
+
+
+		if(to_be_validated):
+			vpat = readPatient.new(valid_pat_num)
+			this_validation_loss = valid_model(vpat.data,vpat.truth)
+
+		if this_validation_loss < best_validation_loss:
+			if this_validation_loss < best_validation_loss * improvement_threshold:
+#				patience = max(patience, iter * patience_increase)
+				best_validation_loss = this_validation_loss
+#				best_itr = itr	
+
+		if patience <= itr :
+			done_looping = True
+			break
+
+end_time = time.clock()
+print('Optimization complete.')
+#print('Best validation score of %f %% obtained at iteration %i, '
+#      'with test performance %f %%' %
+#      (best_validation_loss * 100., best_iter + 1, test_score * 100.))
+print >> sys.stderr, ('The code '+' ran for %.2fm ' % ((end_time - start_time) / 60.))
+"""
+
+flair = mha.new('../patient1/BRATS_HG0001_FLAIR.mha') 
+t1 = mha.new('../patient1/BRATS_HG0001_T1.mha') 
+t2 = mha.new('../patient1/BRATS_HG0001_T2.mha') 
+t1c = mha.new('../patient1/BRATS_HG0001_T1C.mha') 
+truth = mha.new('../patient1/BRATS_HG0001_truth.mha')
+
+combine = [flair.data[0:plen,0:plen,0:plen],t1.data[0:plen,0:plen,0:plen],t2.data[0:plen,0:plen,0:plen],t1c.data[0:plen,0:plen,0:plen]] 
+cost_ij = train_model(numpy.array(combine).astype('float32')/500.0,truth.data[16:16 + plen- 31,16:16 + plen- 31,16:16 + plen- 31].reshape((plen-31)*(plen-31)*(plen-31)))
+print cost_ij
+"""
+x : till 144
+y till 200
+z till 160
+
+"""
+
+
+
+
+
+
