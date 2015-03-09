@@ -30,14 +30,14 @@ class ConvLayer(object):
                 
                 if W_init != None :
                     W_values = W_init
-                else
+                else:
                     W_values = numpy.asarray(rng.uniform(low=-W_bound, high=W_bound, size= filter_shape)*self.Wmask,
                                           dtype=theano.config.floatX)
                 self.W = theano.shared(value = W_values, borrow=True)    
 
                 if b_init != None :
                     b_values = b_init
-                else
+                else:
                     b_values = numpy.zeros((filter_shape[0],), dtype=theano.config.floatX)
                 self.b = theano.shared(value=b_values, borrow=True)
                 self.bmask = numpy.ones((filter_shape[0],),dtype = theano.config.floatX)

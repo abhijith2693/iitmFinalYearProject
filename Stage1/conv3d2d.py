@@ -263,7 +263,7 @@ def make_gpu_optimizer(op, to_gpu):
     :param to_gpu: a list of op inputs that are moved to the GPU.
 
     """
-    @theano.gof.local_optimizer([])
+    @theano.gof.local_optimizer(None)
     def local_to_gpu(node):
         """
         op(host_from_gpu()) -> host_from_gpu(op)

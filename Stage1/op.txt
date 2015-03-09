@@ -1,0 +1,59 @@
+ epoch : 0, patient : 1, time stamp : 1 
+
+training at iteration : 101 
+training at iteration : 201 
+training at iteration : 301 
+training at iteration : 401 
+ epoch : 0, patient : 1, time stamp : 2 
+
+training at iteration : 501 
+training at iteration : 601 
+training at iteration : 701 
+training at iteration : 801 
+ epoch : 0, patient : 1, time stamp : 3 
+
+training at iteration : 901 
+training at iteration : 1001 
+validation...
+training at iteration : 1101 
+training at iteration : 1201 
+training at iteration : 1301 
+ epoch : 0, patient : 1, time stamp : 4 
+
+training at iteration : 1401 
+training at iteration : 1501 
+training at iteration : 1601 
+training at iteration : 1701 
+finished patient
+data and truth stored
+read all tpoints
+ epoch : 0, patient : 2, time stamp : 1 
+
+training at iteration : 1801 
+training at iteration : 1901 
+training at iteration : 2001 
+validation...
+training at iteration : 2101 
+training at iteration : 2201 
+ epoch : 0, patient : 2, time stamp : 2 
+
+training at iteration : 2301 
+training at iteration : 2401 
+training at iteration : 2501 
+training at iteration : 2601 
+ epoch : 0, patient : 2, time stamp : 3 
+
+training at iteration : 2701 
+training at iteration : 2801 
+training at iteration : 2901 
+training at iteration : 3001 
+validation...
+ epoch : 0, patient : 2, time stamp : 4 
+
+training at iteration : 3101 
+training at iteration : 3201 
+training at iteration : 3301 
+training at iteration : 3401 
+training at iteration : 3501 
+finished patient
+data and truth stored
