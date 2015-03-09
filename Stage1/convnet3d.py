@@ -6,7 +6,7 @@ from conv3d2d import conv3d
 from maxpool3d import max_pool_3d
 
 class ConvLayer(object):
-        def __init__(self, rng, input, filter_shape, image_shape,sparse_count,softmax = 0):
+        def __init__(self, rng, input, filter_shape, image_shape,W_init,b_init,sparse_count,softmax = 0):
                 assert image_shape[1] == filter_shape[1]
                 self.input = input
                 fan_in = numpy.prod(filter_shape[1:])
@@ -27,15 +27,18 @@ class ConvLayer(object):
                                 (1 + sparse_count)*filter_shape[3] - sparse_count,
                                 (1 + sparse_count)*filter_shape[4] - sparse_count )
                 self.Wmask = (numpy.ones(filter_shape)*mask).astype(theano.config.floatX)
-                self.W = theano.shared(
-                    numpy.asarray(
-                        rng.uniform(low=-W_bound, high=W_bound, size= filter_shape)*self.Wmask,
-                        dtype=theano.config.floatX
-                    ),
-                    borrow=True
-                )    
+                
+                if W_init != None :
+                    W_values = W_init
+                else
+                    W_values = numpy.asarray(rng.uniform(low=-W_bound, high=W_bound, size= filter_shape)*self.Wmask,
+                                          dtype=theano.config.floatX)
+                self.W = theano.shared(value = W_values, borrow=True)    
 
-                b_values = numpy.zeros((filter_shape[0],), dtype=theano.config.floatX)
+                if b_init != None :
+                    b_values = b_init
+                else
+                    b_values = numpy.zeros((filter_shape[0],), dtype=theano.config.floatX)
                 self.b = theano.shared(value=b_values, borrow=True)
                 self.bmask = numpy.ones((filter_shape[0],),dtype = theano.config.floatX)
 
