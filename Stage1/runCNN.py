@@ -41,7 +41,7 @@ patience = 10000
 patience_increase = 2
 improvement_threshold = 0.995
 validation_frequency = 1000
-saving_frequency = 10
+saving_frequency = 10000
 
 #network parameters
 n_fmaps = (15,25,25,2)		#feature map description :
@@ -92,6 +92,14 @@ if(resumeTraining)
 	
 else
 	epoch,pat_idx,tim_idx,x,y,z,itr,best_validation_loss,best_itr = [0,0,0,0,0,0,0,numpy.inf,0]
+	layer3convW = None
+	layer3convb = None
+	layer2convW = None
+	layer2convb = None
+	layer1convW = None
+	layer1convb = None
+	layer0convW = None
+	layer0convb = None
 ######################################
 p_shape = (plen,plen,plen)
 #ignore_border = True
@@ -174,20 +182,31 @@ zvalues = numpy.arange(0,maxZvalue,numPred)
 strftime("start time is %Y-%m-%d %H:%M:%S", gmtime())
 start_time  = time.clock()
 
+def shared_dataset(MSpat, borrow=True):
+    data_x, data_y = MSpat.data, MSpat.truth
+    shared_x = theano.shared(numpy.asarray(data_x, dtype=theano.config.floatX), borrow=borrow)
+    shared_y = theano.shared(numpy.asarray(data_y, dtype=theano.config.floatX), borrow=borrow)
+    return shared_x, T.cast(shared_y, 'int32')
+
+vpat = readPatMS.new(valid_pat_num,valid_tstamp)
+valid_data, valid_truth = shared_dataset(vpat)
+
 while(epoch < n_epochs) and (not done_looping):
 	while(pat_idx < num_patients):
 		while(tim_idx < TStamps[pat_idx]):
 			pat = readPatMS.new(pat_idx+1,tim_idx+1)
+            train_data, train_truth = shared_dataset(pat)
 			print (' epoch : %i, patient : %i, time stamp : %i \n' %(epoch,pat_idx+1,tim_idx+1))
 			while(x < maxXvalue):
 				while(y < maxYvalue):
 					while(z < maxZvalue):
-						costTrain = train_model(pat.data[:,x:x+plen,y:y+plen,z:z+plen],
-											  	pat.truth[x+offset/2:x+plen-offset/2 +1,
+						costTrain = train_model(train_data[:,x:x+plen,y:y+plen,z:z+plen],
+											  	train_truth[x+offset/2:x+plen-offset/2 +1,
 											  		      y+offset/2:y+plen-offset/2 +1,
 											  		      z+offset/2:z+plen-offset/2 +1])
 						
 						if(itr%saving_frequency == 0)
+                            print 'Saving model...'
 							save_file = file('CNNmodel.pkl', 'wb')
 							genVariables = [epoch,pat_idx,tim_idx,x,y,z+numPred,itr+1,best_validation_loss,best_itr]
 							cPickle.dump(genVariables,save_file,protocol = cPickle.HIGHEST_PROTOCOL) 
@@ -200,14 +219,16 @@ while(epoch < n_epochs) and (not done_looping):
 							print 'training at iteration : %i ' % (itr+1) 
 
 						if(itr%validation_frequency == 0):
-							vpat = readPatMS.new(valid_pat_num,valid_tstamp)
+
+                            print 'validation...'
+							
 							valid_losses = numpy.zeros([len(xvalues),len(yvalues),len(zvalues)])
 							vx,vy,vz = [0,0,0]	
 							for x in xvalues:
 								for y in yvalues:
 									for z in zvalues:
-										valid_losses[vx/numPred,vy/numPred,vz/numPred] = valid_model(vpat.data[:,vx:vx+plen,vy:vy+plen,vz:vz+plen],
-																			   						 vpat.truth[vx+offset/2:vx+plen-offset/2 +1,
+										valid_losses[vx/numPred,vy/numPred,vz/numPred] = valid_model(valid_data[:,vx:vx+plen,vy:vy+plen,vz:vz+plen],
+																			   						 valid_truth[vx+offset/2:vx+plen-offset/2 +1,
 																			   			  						vy+offset/2:vy+plen-offset/2 +1,
 																			   			  						vz+offset/2:vz+plen-offset/2 +1])
 							this_validation_loss = numpy.mean(valid_losses)
@@ -245,13 +266,14 @@ save_file.close()
 print('Predicting for test patient')
 start_time = time.clock()
 tpat = readPatMS.new(test_pat_num,test_tstamp)
+test_data, test_truth = shared_dataset(tpat)
 Prediction = numpy.zeros(img_shape)
 
 for x in xvalues:
 	for y in yvalues:
 			for z in zvalues:
-				errors,pred = test_model(pat.data[:,x:x+plen,y:y+plen,z:z+plen],
-									 pat.truth[x+offset/2:x+plen-offset/2 +1,
+				errors,pred = test_model(test_data[:,x:x+plen,y:y+plen,z:z+plen],
+									 test_truth[x+offset/2:x+plen-offset/2 +1,
 									   	       y+offset/2:y+plen-offset/2 +1,
 											   z+offset/2:z+plen-offset/2 +1])
 				pred = pred.reshape([numPred,numPred,numPred])
