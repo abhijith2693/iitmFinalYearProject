@@ -44,7 +44,7 @@ validation_frequency = 1000
 saving_frequency = 10000
 
 #network parameters
-n_fmaps = (2,5,5,2)		#feature map description :
+n_fmaps = (15,25,50,8)		#feature map description :
 #n_fmaps[0] - number of feature maps after 1st convolution
 #n_fmaps[1] - number of feature maps after 2nd convolution
 #n_fmaps[2] - number of output neurons after hidden layer
@@ -274,6 +274,7 @@ while(epoch < n_epochs) and (not done_looping):
 									best_itr = itr	
 
 						if patience <= itr :
+							print 'Patience on these patients over!'
 							done_looping = True
 							break
 						iz = iz + numPred
