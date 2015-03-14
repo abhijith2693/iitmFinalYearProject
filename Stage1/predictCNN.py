@@ -26,13 +26,13 @@ n_fmaps = (15,25,50,8)		#feature map description :
 #n_fmaps[2] - number of output neurons after hidden layer
 #n_fmaps[3] - number of output classes							
 
-fmap_sizes = (5,5,5,1)		
+fmap_sizes = (5,5,2,1)		
 # 0th value is fmap_size after 1st convolution and so on
 ############################################
 #"""
 #Image details and settings for Multiple Sclerosis
-plen = 51
-offset = 32
+plen = 61
+offset = 20
 numPred = plen - offset + 1
 
 test_pat_num = 1
@@ -147,6 +147,9 @@ xvalues = numpy.arange(0,maxXvalue,numPred)
 yvalues = numpy.arange(0,maxYvalue,numPred)
 zvalues = numpy.arange(0,maxZvalue,numPred)
 ############################################
+
+print "Loaded Model."
+
 localtime = time.asctime( time.localtime(time.time()) )
 print "Start time is :", localtime
 
@@ -169,4 +172,4 @@ print >> sys.stderr, ('Prediction done and it took '+' %.2fm ' % ((end_time - st
 affine = [[-1,0,0,0],[0,-1,0,0],[0,0,1,0],[0,0,0,1]]
 img = nib.Nifti1Image(Prediction, affine)
 img.set_data_dtype(numpy.int32)
-nib.save(img,'prediction.nii')
+nib.save(img,'prediction-tr-A3.nii')

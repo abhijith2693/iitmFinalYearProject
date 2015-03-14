@@ -54,7 +54,7 @@ class ConvLayer(object):
                 self.outputlen = (image_shape[2]-filter_shape[2] +1,
                                   image_shape[3]-filter_shape[3] +1,
                                   image_shape[4]-filter_shape[4] +1)
-                self.output = T.tanh(conv_out)
+                self.output = T.nnet.softplus(conv_out)
                 self.params = [self.W, self.b]
                 self.masks = [self.Wmask, self.bmask]
                 self.num_points = T.prod(self.outputlen)
