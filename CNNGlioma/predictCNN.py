@@ -3,6 +3,7 @@ import sys
 import time
 sys.path.insert(1,'../headers/')
 
+from time import gmtime, strftime
 import numpy
 import cPickle
 from PIL import Image
@@ -13,14 +14,22 @@ import theano
 import theano.tensor as T
 
 from convnet3d import *
-from mlp import HiddenLayer
-from logistic_sgd import *
-from time import gmtime, strftime
 
-import readPatMS
+import readPatGlioma
 
+###########################################
+def inspect_inputs(i, node, fn):
+    print i, node, "input(s) value(s):", [input[0] for input in fn.inputs],
+
+def inspect_outputs(i, node, fn):
+    print "output(s) value(s):", [output[0] for output in fn.outputs]
+############################################    
+#Predict final or intermediate ?
+predictFinal = False
 #network parameters
-n_fmaps = (15,25,50,8)		#feature map description :
+num_classes = 3
+n_fmaps = (15,25,50,num_classes)
+#n_fmaps = (3,3,3,num_classes)		#feature map description :
 #n_fmaps[0] - number of feature maps after 1st convolution
 #n_fmaps[1] - number of feature maps after 2nd convolution
 #n_fmaps[2] - number of output neurons after hidden layer
@@ -29,19 +38,16 @@ n_fmaps = (15,25,50,8)		#feature map description :
 fmap_sizes = (5,5,2,1)		
 # 0th value is fmap_size after 1st convolution and so on
 ############################################
-#"""
-#Image details and settings for Multiple Sclerosis
 plen = 61
 offset = 20
 numPred = plen - offset + 1
 
-test_pat_num = 1
-test_tstamp = 1
+test_pat_num = 20
 
 ############################################
 #Details pertaining to Multiple Sclerosis Dataset
 num_channels = 4
-img_shape = (181,217,181)
+
 
 ############################################
 #Initial Settings
@@ -49,10 +55,13 @@ img_shape = (181,217,181)
 done_looping = False
 rng = numpy.random.RandomState(23455)
 
+if(not predictFinal):
+	savedModel = open('Output/CNNmodel.pkl','r')
+	genVariables = cPickle.load(savedModel)
+	epoch,pat_idx,tim_idx,ix,iy,iz,itr,best_validation_loss,best_itr = genVariables
+else :
+	savedModel = open('Output/FinalModel.pkl','r')
 
-savedModel = file('CNNmodel.pkl','rb')
-genVariables = cPickle.load(savedModel)
-epoch,pat_idx,tim_idx,ix,iy,iz,itr,best_validation_loss,best_itr = genVariables
 layer3convW = cPickle.load(savedModel)
 layer3convb = cPickle.load(savedModel)
 layer2convW = cPickle.load(savedModel)
@@ -62,12 +71,16 @@ layer1convb = cPickle.load(savedModel)
 layer0convW = cPickle.load(savedModel)
 layer0convb = cPickle.load(savedModel)
 
+print "Loaded Model."
+
 ######################################
 ##Loading Dataset to Shared space
 
-tpat = readPatMS.new(test_pat_num,test_tstamp)
+tpat = readPatGlioma.new(test_pat_num)
 test_data = theano.shared(numpy.asarray(tpat.data,dtype = theano.config.floatX),borrow = True)
 test_truth = theano.shared(numpy.asarray(tpat.truth,dtype = 'int32'),borrow = True)
+img_shape = tpat.truth.shape
+
 
 p_shape = (plen,plen,plen)
 #ignore_border = True
@@ -131,12 +144,19 @@ layer3conv = ConvLayer(rng,
 newlen = layer2conv.outputlen
 
 cost = layer3conv.negative_log_likelihood(y)
-
+"""+ T.sum(layer3conv.W**2) + T.sum(layer3conv.b**2) + T.sum(layer2conv.W**2) + T.sum(layer2conv.b**2) + \
+	   T.sum(layer1conv.W**2) + T.sum(layer1conv.b**2) + T.sum(layer0conv.W**2) + T.sum(layer0conv.b**2)  
+"""
 test_model = theano.function(inputs = [idx,idy,idz],
-							outputs = [layer3conv.errors(y),layer3conv.y_pred], 
-							givens = {x: test_data[:,idx:idx+plen,idy:idy+plen,idz:idz+plen],
-							z: test_truth[idx+offset/2:idx+plen-offset/2 +1, idy+offset/2:idy+plen-offset/2 +1,idz+offset/2:idz+plen-offset/2 +1]})
-
+							 outputs = [layer3conv.errors(y),layer3conv.y_pred,layer3conv.p_y_given_x], 
+							 givens = {x: test_data[:,idx:idx+plen,idy:idy+plen,idz:idz+plen],
+									   z: test_truth[idx+offset/2:idx+plen-offset/2 +1, 
+									  			     idy+offset/2:idy+plen-offset/2 +1,
+									  			     idz+offset/2:idz+plen-offset/2 +1]})
+""",
+							 mode=theano.compile.MonitorMode(pre_func=inspect_inputs,
+															 post_func=inspect_outputs))
+"""
 ############################################
 
 maxXvalue = img_shape[0]-plen
@@ -146,30 +166,45 @@ maxZvalue = img_shape[2]-plen
 xvalues = numpy.arange(0,maxXvalue,numPred)
 yvalues = numpy.arange(0,maxYvalue,numPred)
 zvalues = numpy.arange(0,maxZvalue,numPred)
+
+if((maxXvalue-1)%numPred != 0):
+	xvalues = numpy.append(xvalues,maxXvalue-1)
+if((maxYvalue-1)%numPred != 0):
+	yvalues = numpy.append(yvalues,maxYvalue-1)
+if((maxZvalue-1)%numPred != 0):
+	zvalues = numpy.append(zvalues,maxZvalue-1)
+
 ############################################
-
-print "Loaded Model."
-
-localtime = time.asctime( time.localtime(time.time()) )
-print "Start time is :", localtime
 
 print('Predicting for test patient')
 start_time = time.clock()
-Prediction = numpy.zeros(img_shape)
 
-for ix in xvalues:
-	for iy in yvalues:
-			for iz in zvalues:
-				errors,pred = test_model(ix,iy,iz)
+Prediction = numpy.zeros(img_shape)
+img_shape = numpy.insert(img_shape,0,num_classes)
+PostProbs = numpy.zeros(img_shape)
+
+for ix in numpy.arange(len(xvalues)):
+	for iy in numpy.arange(len(yvalues)):
+			for iz in numpy.arange(len(zvalues)):
+				errors,pred,p_y_given_x = test_model(xvalues[ix],yvalues[iy],zvalues[iz])
 				pred = pred.reshape([numPred,numPred,numPred])
-				Prediction[ix+offset/2:ix+plen-offset/2 +1,
-						   iy+offset/2:iy+plen-offset/2 +1,
-						   iz+offset/2:iz+plen-offset/2 +1] = pred
+				p_y_given_x = p_y_given_x.transpose(1,0).reshape([num_classes,numPred,numPred,numPred])
+				Prediction[xvalues[ix]+offset/2:xvalues[ix]+plen-offset/2 +1,
+						   yvalues[iy]+offset/2:yvalues[iy]+plen-offset/2 +1,
+						   zvalues[iz]+offset/2:zvalues[iz]+plen-offset/2 +1] = pred
+				PostProbs[:,xvalues[ix]+offset/2:xvalues[ix]+plen-offset/2 +1,
+						   	yvalues[iy]+offset/2:yvalues[iy]+plen-offset/2 +1,
+						   	zvalues[iz]+offset/2:zvalues[iz]+plen-offset/2 +1] = p_y_given_x
+
 
 end_time = time.clock()
 print >> sys.stderr, ('Prediction done and it took '+' %.2fm ' % ((end_time - start_time) / 60.))
 #output nii file
 affine = [[-1,0,0,0],[0,-1,0,0],[0,0,1,0],[0,0,0,1]]
+for ix in numpy.arange(num_classes):
+	img = nib.Nifti1Image(PostProbs[ix],affine)
+	img.set_data_dtype(numpy.float32)
+	nib.save(img,'Output/postprobs' + str(ix+1) + '.nii')
 img = nib.Nifti1Image(Prediction, affine)
 img.set_data_dtype(numpy.int32)
-nib.save(img,'prediction-tr-A3.nii')
+nib.save(img,'Output/Prediction.nii')

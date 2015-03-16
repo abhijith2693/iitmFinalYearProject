@@ -1,14 +1,3 @@
-"""
-x = 16,36,56,76 
-
-
-x-16 : x
-x : x + plen-31 
-x + plen-31 : x+plen - 32 +16
-
-
-
-"""
 import os
 import sys
 import time
@@ -29,24 +18,30 @@ from logistic_sgd import *
 from time import gmtime, strftime
 
 import readPatGlioma as ReadPat
+
+def inspect_inputs(i, node, fn):
+    print i, node, "input(s) value(s):", [input[0] for input in fn.inputs],
+
+def inspect_outputs(i, node, fn):
+    print "output(s) value(s):", [output[0] for output in fn.outputs]
 ############################################
 
 resumeTraining = False						# make this true to resume training from saved model	
 
 ############################################
 # General  Hyper-parameters
-learning_rate = 0.0001 #e-04 				
-n_epochs = 1
+learning_rate = 0.01 #e-04 				
+n_epochs = 100
 patience = 30000 
 patience_increase = 2
 improvement_threshold = 0.995
 validation_frequency = 1000
-saving_frequency = 10000
+saving_frequency = 1000
 
 num_classes = 3
 #network parameters
-#n_fmaps = (15,25,50,3)		#feature map description :
-n_fmaps = (3,3,3,num_classes)			#feature map for debugging
+n_fmaps = (15,25,50,num_classes)		#feature map description :
+#n_fmaps = (3,3,3,num_classes)			#feature map for debugging
 #n_fmaps[0] - number of feature maps after 1st convolution
 #n_fmaps[1] - number of feature maps after 2nd convolution
 #n_fmaps[2] - number of output neurons after hidden layer
@@ -63,8 +58,7 @@ numPred = plen - offset + 1
 
 valid_pat_num = 19
 test_pat_num = 20
-valid_tstamp = 1
-test_tstamp = 1
+
 
 ############################################
 #Details pertaining to Multiple Sclerosis Dataset
@@ -79,7 +73,7 @@ done_looping = False
 rng = numpy.random.RandomState(23455)
 
 if(resumeTraining):
-	savedModel = file('CNNmodel','rb')
+	savedModel = open('Output/CNNmodel.pkl','r')
 	genVariables = cPickle.load(savedModel)
 	epoch,pat_idx,tim_idx,xi,yi,zi,itr,best_validation_loss,best_itr = genVariables
 	layer3convW = cPickle.load(savedModel)
@@ -90,6 +84,7 @@ if(resumeTraining):
 	layer1convb = cPickle.load(savedModel)
 	layer0convW = cPickle.load(savedModel)
 	layer0convb = cPickle.load(savedModel)
+	savedModel.close()
 	
 else:
 	epoch,pat_idx,tim_idx,xi,yi,zi,itr,best_validation_loss,best_itr = [0,0,0,0,0,0,0,numpy.inf,0]
@@ -178,7 +173,14 @@ layer3conv = ConvLayer(rng,
 				   softmax = 1)
 newlen = layer2conv.outputlen
 
-cost = layer3conv.negative_log_likelihood(y)
+params = layer3conv.params + layer2conv.params + layer1conv.params + layer0conv.params
+masks = layer3conv.masks + layer2conv.masks + layer1conv.masks + layer0conv.masks
+cost = layer3conv.negative_log_likelihood(y) 
+"""+ T.sum(layer3conv.W**2) + T.sum(layer3conv.b**2) + T.sum(layer2conv.W**2) + T.sum(layer2conv.b**2) + \
+	   T.sum(layer1conv.W**2) + T.sum(layer1conv.b**2) + T.sum(layer0conv.W**2) + T.sum(layer0conv.b**2)  
+"""
+grads = T.grad(cost,params)
+
 
 test_model = theano.function(inputs = [idx,idy,idz],
 							outputs = [layer3conv.errors(y),layer3conv.y_pred,layer3conv.p_y_given_x], 
@@ -186,14 +188,20 @@ test_model = theano.function(inputs = [idx,idy,idz],
 									  z: test_truth[idx+offset/2:idx+plen-offset/2 +1, 
 											        idy+offset/2:idy+plen-offset/2 +1,
 											        idz+offset/2:idz+plen-offset/2 +1]})
-valid_model = theano.function([idx,idy,idz],layer3conv.errors(y),givens = {x: valid_data[:,idx:idx+plen,idy:idy+plen,idz:idz+plen],
-																		   z: valid_truth[idx+offset/2:idx+plen-offset/2 +1, 
-																		   				  idy+offset/2:idy+plen-offset/2 +1,
-																		   				  idz+offset/2:idz+plen-offset/2 +1]})
+""",
+							mode=theano.compile.MonitorMode(pre_func=inspect_inputs,
+															post_func=inspect_outputs))"""
+valid_model = theano.function(inputs = [idx,idy,idz],
+							  outputs = layer3conv.errors(y),
+							  givens = {x: valid_data[:,idx:idx+plen,idy:idy+plen,idz:idz+plen],
+										 z: valid_truth[idx+offset/2:idx+plen-offset/2 +1, 
+										  			    idy+offset/2:idy+plen-offset/2 +1,
+														idz+offset/2:idz+plen-offset/2 +1]})
+""",
+							  mode=theano.compile.MonitorMode(pre_func=inspect_inputs,
+							   								   post_func=inspect_outputs))"""
 
-params = layer3conv.params + layer2conv.params + layer1conv.params + layer0conv.params
-masks = layer3conv.masks + layer2conv.masks + layer1conv.masks + layer0conv.masks
-grads = T.grad(cost,params)
+
 #update only sparse elements
 updates = [(param_i,param_i-learning_rate*grad_i*mask_i) for param_i,grad_i,mask_i in zip(params,grads,masks)]
 train_model = theano.function([idx,idy,idz],cost,updates = updates, 
@@ -201,6 +209,9 @@ train_model = theano.function([idx,idy,idz],cost,updates = updates,
 										 z: train_truth[idx+offset/2:idx+plen-offset/2 +1, 
 										 		        idy+offset/2:idy+plen-offset/2 +1,
 										 		        idz+offset/2:idz+plen-offset/2 +1]})
+""",
+							   mode=theano.compile.MonitorMode(pre_func=inspect_inputs,
+							   								   post_func=inspect_outputs))"""
 
 ############################################
 
@@ -223,7 +234,7 @@ localtime = time.asctime( time.localtime(time.time()) )
 print "Start time is :", localtime
 start_time  = time.clock()
 
-myfile = open("logcost.txt", "a")           #File Name should be changed for every new run
+myfile = open("Output/logcost.txt", "a")           #File Name should be changed for every new run
     						
 logcost = []
 while(epoch < n_epochs) and (not done_looping):
@@ -250,18 +261,16 @@ while(epoch < n_epochs) and (not done_looping):
 
 					if(itr%saving_frequency == 0):
 						print 'Saving model...'
-						save_file = file('CNNmodel.pkl', 'wb')
+						save_file = open('Output/CNNmodel.pkl', 'w')
 						genVariables = [epoch,pat_idx,tim_idx,xi,yi,zi+numPred,itr+1,best_validation_loss,best_itr]
 						cPickle.dump(genVariables,save_file,protocol = cPickle.HIGHEST_PROTOCOL) 
 						for i in xrange(len(params)):
-							cPickle.dump(params[i].get_value(borrow=True), save_file, protocol = cPickle.HIGHEST_PROTOCOL)    
+							cPickle.dump(params[i].get_value(borrow=True), save_file, protocol = cPickle.HIGHEST_PROTOCOL) 
 						save_file.close()
 						for l in logcost:
 							myfile.write("%f\n"%l)
 						logcost = []
 						
-
-
 					if(itr%validation_frequency == 0):
 
 						print 'validation...'
@@ -332,7 +341,7 @@ print('Best validation score of %f %% obtained at iteration %i, '
 	   %(best_validation_loss*100.,best_itr + 1))
 
 # Save model to file after whole optimization is done
-save_file = file('FinalModel.pkl', 'wb')
+save_file = file('Output/FinalModel.pkl', 'wb')
 for i in xrange(len(params)):
 	cPickle.dump(params[i].get_value(borrow=True), save_file, protocol = cPickle.HIGHEST_PROTOCOL)    
 save_file.close()
@@ -383,10 +392,10 @@ end_time = time.clock()
 print >> sys.stderr, ('Prediction done and it took '+' %.2fm ' % ((end_time - start_time) / 60.))
 #output nii file
 affine = [[-1,0,0,0],[0,-1,0,0],[0,0,1,0],[0,0,0,1]]
-img = nib.Nifti1Image(Prediction, affine)
-img.set_data_dtype(numpy.int32)
-nib.save(img,'prediction.nii')
 for ix in numpy.arange(num_classes):
 	img = nib.Nifti1Image(PostProbs[ix],affine)
 	img.set_data_dtype(numpy.float32)
-	nib.save(img,'postprobs' + str(ix+1) + '.nii')
+	nib.save(img,'Output/postprobs' + str(ix+1) + '.nii')
+img = nib.Nifti1Image(Prediction, affine)
+img.set_data_dtype(numpy.int32)
+nib.save(img,'Output/Prediction.nii')

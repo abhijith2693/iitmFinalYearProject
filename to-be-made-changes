@@ -1,0 +1,4 @@
+run Glioma
+use 2 stage normalization
+posterior probabilities
+Caffe implementation
